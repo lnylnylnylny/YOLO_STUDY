@@ -31,16 +31,6 @@ export default function Home() {
     console.log("분석 시작:", image.file.name);
   };
 
-  const tags = [
-    "플라스틱",
-    "유리병",
-    "종이류",
-    "캔/금속",
-    "음식물",
-    "일반쓰레기",
-    "비닐",
-  ];
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-white-50">
       {/* 상단 아이콘 */}
@@ -190,18 +180,6 @@ export default function Home() {
         </svg>
         분리수거 방법 확인하기
       </button>
-
-      {/* 카테고리 태그 */}
-      <div className="flex flex-wrap gap-2 justify-center mt-5">
-        {tags.map((tag) => (
-          <span
-            key={tag}
-            className="text-xs text-green-800 bg-green-100 border border-green-200 rounded-full px-3 py-1"
-          >
-            {tag}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
