@@ -1,48 +1,88 @@
 import { useRef, useState } from "react";
 
-interface ImageItem {
-  file: File;
-  preview: string;
+interface BBox {
+  x_min: number;
+  y_min: number;
+  x_max: number;
+  y_max: number;
 }
 
+interface Detection {
+  class_name: string;
+  class_id: number;
+  confidence: number;
+  bbox: BBox;
+}
+
+interface ApiResponse {
+  detections: Detection[];
+  image_base64: string;
+}
+
+type Status = "idle" | "loading" | "success" | "error";
+
+const CLASS_LABEL: Record<string, string> = {
+  plastic: "플라스틱/비닐",
+  glass: "유리병",
+  paper: "종이류",
+  metal: "캔/금속",
+  trash: "일반쓰레기",
+};
+
 export default function Home() {
-  const [image, setImage] = useState<ImageItem | null>(null);
+  const [image, setImage] = useState<{ file: File; preview: string } | null>(
+    null
+  );
+  const [result, setResult] = useState<ApiResponse | null>(null);
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0]) return;
+    if (!e.target.files?.[0]) return;
     const file = e.target.files[0];
-
     if (image) URL.revokeObjectURL(image.preview);
-
     setImage({ file, preview: URL.createObjectURL(file) });
+    setResult(null);
+    setStatus("idle");
     e.target.value = "";
   };
 
   const removeImage = () => {
     if (image) URL.revokeObjectURL(image.preview);
     setImage(null);
+    setResult(null);
+    setStatus("idle");
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!image) return;
-    // 분석 처리 함수 호출
-    // processImage(image.file)
-    console.log("분석 시작:", image.file.name);
-  };
 
-  const tags = [
-    "플라스틱",
-    "유리병",
-    "종이류",
-    "캔/금속",
-    "음식물",
-    "일반쓰레기",
-    "비닐",
-  ];
+    setStatus("loading");
+    setErrorMsg("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", image.file);
+
+      const res = await fetch("http://localhost:8000/predict", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+
+      const data: ApiResponse = await res.json();
+      setResult(data);
+      setStatus("success");
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "알 수 없는 오류");
+      setStatus("error");
+    }
+  };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-white-50">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-green-50">
       {/* 상단 아이콘 */}
       <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
         <svg
@@ -71,7 +111,7 @@ export default function Home() {
 
       {/* 업로드 영역 */}
       <div
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => status !== "loading" && fileInputRef.current?.click()}
         className={`w-full max-w-sm cursor-pointer rounded-xl overflow-hidden transition
           ${
             image
@@ -103,10 +143,15 @@ export default function Home() {
           </>
         ) : (
           <>
+            {/* 분석 결과 이미지 or 미리보기 */}
             <img
-              src={image.preview}
+              src={
+                result?.image_base64
+                  ? `data:image/jpeg;base64,${result.image_base64}`
+                  : image.preview
+              }
               alt="미리보기"
-              className="w-full object-cover block"
+              className="w-full object-contain block bg-green-50"
             />
             <div
               onClick={(e) => {
@@ -169,39 +214,86 @@ export default function Home() {
         </div>
       )}
 
+      {/* 감지 결과 카드 */}
+      {status === "success" && result && result.detections.length > 0 && (
+        <div className="w-full max-w-sm mt-4 bg-white border border-green-200 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 bg-green-700 text-white text-sm font-medium">
+            감지된 항목 {result.detections.length}개
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {result.detections.map((d, i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between px-4 py-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-gray-800">
+                    {CLASS_LABEL[d.class_name] ?? d.class_name}
+                  </span>
+                </div>
+                <span className="text-xs text-green-700 bg-green-100 border border-green-200 rounded-full px-2.5 py-0.5">
+                  {(d.confidence * 100).toFixed(1)}%
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 감지 결과 없음 */}
+      {status === "success" && result?.detections.length === 0 && (
+        <div className="w-full max-w-sm mt-4 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-800 text-center">
+          재활용 항목을 감지하지 못했어요
+        </div>
+      )}
+
+      {/* 에러 */}
+      {status === "error" && (
+        <div className="w-full max-w-sm mt-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 text-center">
+          {errorMsg}
+        </div>
+      )}
+
       {/* 제출 버튼 */}
       <button
         onClick={handleSubmit}
-        disabled={!image}
+        disabled={!image || status === "loading"}
         className="w-full max-w-sm mt-6 py-3.5 rounded-xl font-medium text-sm text-white flex items-center justify-center gap-2 transition active:scale-[0.98]
           bg-green-800 hover:bg-green-900 disabled:bg-gray-300 disabled:cursor-not-allowed"
       >
-        <svg
-          className="w-4 h-4"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="white"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        분리수거 방법 확인하기
+        {status === "loading" ? (
+          <>
+            <svg
+              className="w-4 h-4 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="2"
+            >
+              <circle cx="12" cy="12" r="10" strokeOpacity="0.3" />
+              <path d="M12 2a10 10 0 0 1 10 10" />
+            </svg>
+            분석 중...
+          </>
+        ) : (
+          <>
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            분리수거 방법 확인하기
+          </>
+        )}
       </button>
-
-      {/* 카테고리 태그 */}
-      <div className="flex flex-wrap gap-2 justify-center mt-5">
-        {tags.map((tag) => (
-          <span
-            key={tag}
-            className="text-xs text-green-800 bg-green-100 border border-green-200 rounded-full px-3 py-1"
-          >
-            {tag}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
