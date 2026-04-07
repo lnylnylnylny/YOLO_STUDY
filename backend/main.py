@@ -17,7 +17,7 @@ app.add_middleware(
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "yolo_train/garbage_yolo.pt")
+MODEL_PATH = os.path.join(BASE_DIR, "yolo_train/garbage_yolo_upgrade.pt")
 
 model = None
 try:
